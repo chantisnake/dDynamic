@@ -20,7 +20,7 @@ import GHC.Generics (Generic, SourceStrictness (SourceStrict))
 import Data.Typeable (Typeable)
 
 
-import Data.Map (Map)
+import Data.Map (Map, keys)
 import qualified Data.Map as Map
 
 import Data.Monoid (Any(..))
@@ -61,13 +61,16 @@ import qualified Dynamic.Helper as C
 import qualified Dynamic.Erase as C
 
 
---TODO clean this up
-type Module = (Map TCName DataDef, Map Var (Term, Ty))
+-- Basic Type def 
+type SurfaceDataMap = Map TCName DataDef  -- definition of data constructor in surface language
+type SurfaceVarMap = Map Var (Term, Ty)  -- definition of variables in the surface language
+type CastDataMap = Map TCName C.DataDef  -- definitions of data constructor in cast language
+type CastVarMap = Map C.Var C.Term  -- definition of variables in cast language
 
--- runFile :: FilePath -> IO LangOut
--- runFile path = 
---   do program <- readFile path
---      return $ exec program
+-- These are all the maps requires to make a module
+-- hence these are called pre-module, data to make a module, using function @makeMode@
+type PreSurfaceModule = (SurfaceDataMap, SurfaceVarMap)
+type PreCastModule = (CastDataMap, CastVarMap)
 
 
 loadFile path = do
@@ -98,7 +101,7 @@ loadFile path = do
     Left ls -> pure $ ParseError ls
 
 
-loadSurfaceFile :: FilePath -> IO (ReplRes (Map TCName DataDef, Map Var (Term, Ty)))
+loadSurfaceFile :: FilePath -> IO (ReplRes PreSurfaceModule)
 loadSurfaceFile path = do
   s <- readFile path
   -- print s
@@ -119,7 +122,7 @@ loadSurfaceFile path = do
           pure $ SurfaceTypeError e
     Left ls -> pure $ ParseError ls
 
--- pmstd :: String ->  String -> Maybe ((Map TCName DataDef, Map Var (Term, Ty)), String)
+pmstd :: String -> String -> Either [String] PreSurfaceModule
 pmstd path s = prettyParse path s $ do
   token modulep
   -- pure $ undermodule e (dataCtx stdlib)
@@ -146,8 +149,8 @@ data ReplCmd
 
 
 data ReplState
-  = Surface (Map TCName DataDef, Map Var (Term, Ty))
-  | Cast (Map TCName C.DataDef, Map C.Var C.Term)
+  = Surface PreSurfaceModule
+  | Cast PreCastModule
   | NothingLoaded --TODO stdlib env?
   deriving Show
 
@@ -211,8 +214,8 @@ evalSurfaceFilePath curState path =  do
 
 
 -- get type info for a surface language expression in REPL
-getSurfaceExpTypeInfo :: REPLEval (String, Exp, Map TCName DataDef, Map Var (Term, Ty) )
-getSurfaceExpTypeInfo curState (inpStr, exp, ddefs, trmdefs) = do
+getSurfaceExpTypeInfo :: REPLEval (String, Exp, PreSurfaceModule )
+getSurfaceExpTypeInfo curState (inpStr, exp, (ddefs, trmdefs)) = do
   let exp' = undermodule exp ddefs
   case runTcMonadS "" inpStr (TyEnv Map.empty ddefs trmdefs) $ tyInfer exp' of
     Right a -> outputStrLn $ show a
@@ -221,8 +224,8 @@ getSurfaceExpTypeInfo curState (inpStr, exp, ddefs, trmdefs) = do
 
 
 -- get type info for a cast language expression in REPL
-getCastExpTypeInfo :: REPLEval (String, Exp, Map TCName C.DataDef, Map C.Var C.Term )
-getCastExpTypeInfo curState (inpStr, exp, ddefs, trmdefs) = do
+getCastExpTypeInfo :: REPLEval (String, Exp, PreCastModule )
+getCastExpTypeInfo curState (inpStr, exp, (ddefs, trmdefs)) = do
   let mod = C.makeMod ddefs trmdefs
   let exp' = C.undermodule exp mod
   case C.runC (do
@@ -247,16 +250,16 @@ getCastExpTypeInfo curState (inpStr, exp, ddefs, trmdefs) = do
 
 
 -- evaluate a cast language expression in REPL
-evalSurfaceExp :: REPLEval (Exp, Map TCName DataDef, Map Var (Term, Ty) )
-evalSurfaceExp curState (exp, ddefs, trmdefs) = do
+evalSurfaceExp :: REPLEval (Exp, PreSurfaceModule )
+evalSurfaceExp curState (exp, (ddefs, trmdefs)) = do
   let exp' = undermodule exp ddefs
   let res = runTcMonad (TyEnv Map.empty  ddefs trmdefs) $ cbv exp'
   outputStrLn $ show res
   setREPLState curState
 
 -- evaluate a surface language expression in REPL
-evalCastExp :: REPLEval (String, Exp, Map TCName C.DataDef, Map C.Var C.Term )
-evalCastExp curState (inpStr, exp, ddefs, trmdefs) = do
+evalCastExp :: REPLEval (String, Exp, PreCastModule )
+evalCastExp curState (inpStr, exp, (ddefs, trmdefs)) = do
   let mod = C.makeMod ddefs trmdefs
   let exp' = C.undermodule exp mod
   case C.runC (do
@@ -273,16 +276,16 @@ evalCastExp curState (inpStr, exp, ddefs, trmdefs) = do
 
 
 -- get all info for a cast language expression in REPL
-allInfoSurfaceExp :: REPLEval (Exp, Map TCName DataDef, Map Var (Term, Ty) )
-allInfoSurfaceExp curState (exp, ddefs, trmdefs) = do
+allInfoSurfaceExp :: REPLEval (Exp, PreSurfaceModule )
+allInfoSurfaceExp curState (exp, (ddefs, trmdefs)) = do
   let exp' = undermodule exp ddefs
   outputStrLn $ show $ runTcMonad (TyEnv Map.empty ddefs trmdefs) $ tyInfer exp'
   outputStrLn $ show $ runTcMonad (TyEnv Map.empty ddefs trmdefs) $ cbv exp'
   setREPLState curState
 
 -- get all info for a surface language expression in REPL
-allInfoCastExp :: REPLEval (String, Exp, Map TCName C.DataDef, Map C.Var C.Term )
-allInfoCastExp curState (inpStr, exp, ddefs, trmdefs) = do
+allInfoCastExp :: REPLEval (String, Exp, PreCastModule )
+allInfoCastExp curState (inpStr, exp, (ddefs, trmdefs)) = do
   let mod = C.makeMod ddefs trmdefs
   let exp' = C.undermodule exp mod
 
@@ -346,24 +349,24 @@ evalREPLCom curState inpStr =
 
     -- get type info
     (Right (TyInf exp,_,""), Surface (ddefs, trmdefs))->
-      getSurfaceExpTypeInfo curState (inpStr, exp, ddefs, trmdefs)
+      getSurfaceExpTypeInfo curState (inpStr, exp, (ddefs, trmdefs))
 
     (Right (TyInf exp,_,""), Cast (ddefs, trmdefs)) ->
-      getCastExpTypeInfo curState (inpStr, exp, ddefs, trmdefs)
+      getCastExpTypeInfo curState (inpStr, exp, (ddefs, trmdefs))
 
     -- eval
     (Right (Eval exp,_,""), Surface (ddefs, trmdefs))->
-      evalSurfaceExp curState (exp, ddefs, trmdefs)
+      evalSurfaceExp curState (exp, (ddefs, trmdefs))
 
     (Right (Eval exp,_,""), Cast (ddefs, trmdefs))->
-      evalCastExp curState (inpStr, exp, ddefs, trmdefs)
+      evalCastExp curState (inpStr, exp, (ddefs, trmdefs))
 
     -- get all info
     (Right (AllInfo exp,_,""), Surface (ddefs, trmdefs)) ->
-      allInfoSurfaceExp curState (exp, ddefs, trmdefs)
+      allInfoSurfaceExp curState (exp, (ddefs, trmdefs))
 
     (Right (AllInfo exp,_,""), Cast (ddefs, trmdefs)) ->
-      allInfoCastExp curState (inpStr, exp, ddefs, trmdefs)
+      allInfoCastExp curState (inpStr, exp, (ddefs, trmdefs))
 
     -- parse error
     (ee, _) -> do
@@ -398,7 +401,7 @@ readPrompt prompt = flushStr prompt >> getLine
 -- Some other repls for refference
 -- https://github.com/diku-dk/futhark/blob/ee780c984227ed59548a16fa6ab6d8b52348a7a4/src/Futhark/CLI/REPL.hs
 
-e0 :: IO (ReplRes (Map TCName C.DataDef, Map C.Var C.Term))
+e0 :: IO (ReplRes PreCastModule)
 e0 = loadFile "examples/ex0.dt"
 
 e = loadFile "examples/ex1.dt"
