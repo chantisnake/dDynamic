@@ -73,6 +73,7 @@ type PreSurfaceModule = (SurfaceDataMap, SurfaceVarMap)
 type PreCastModule = (CastDataMap, CastVarMap)
 
 
+loadFile :: FilePath -> IO (ReplRes PreCastModule)
 loadFile path = do
   s <- readFile path
   -- print s
