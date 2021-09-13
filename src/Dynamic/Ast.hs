@@ -19,7 +19,7 @@ import Control.Applicative (Applicative (..), (<$>))
 import Control.Monad (guard)
 import Data.List (find)
 
-import Data.Map (Map)
+import Data.Map (Map, keys)
 import qualified Data.Map as Map
 
 import Data.Set (Set)
@@ -116,6 +116,10 @@ data DataDef = DataDef (Tel Term Ty ()) (Map DCName (Tel Term Ty [Term])) derivi
 -- instance Show DataDef where
 --   show = lfullshow
 
+
+-- | Get the constructor names
+consNames :: DataDef -> [DCName]
+consNames (DataDef _ dcMap) = keys dcMap
 
 
 data Exp

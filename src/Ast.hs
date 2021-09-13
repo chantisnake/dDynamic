@@ -10,7 +10,7 @@ import Unbound.Generics.LocallyNameless
 import GHC.Generics (Generic)
 import Data.Typeable (Typeable)
 
-import Data.Map (Map)
+import Data.Map (Map, keys)
 import qualified Data.Map as Map
 import Control.Monad (guard)
 
@@ -102,6 +102,10 @@ instance Subst Exp DataDef
 
 
 type Telescope = Tel Exp Ty
+
+-- | Get the constructor names
+consNames :: DataDef -> [DCName]
+consNames (DataDef _ dcMap) = keys dcMap
 
 
 erasePos :: Exp -> Exp

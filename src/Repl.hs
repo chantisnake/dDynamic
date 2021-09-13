@@ -20,7 +20,7 @@ import GHC.Generics (Generic, SourceStrictness (SourceStrict))
 import Data.Typeable (Typeable)
 
 
-import Data.Map (Map, keys)
+import Data.Map (Map, keys, elems)
 import qualified Data.Map as Map
 
 import Data.Monoid (Any(..))
@@ -154,6 +154,23 @@ data ReplState
   | Cast PreCastModule
   | NothingLoaded --TODO stdlib env?
   deriving Show
+
+
+-- get all the names in the state, including var name, dc name, tc names etc.
+getNames :: ReplState -> [String]
+getNames state =
+  case state of
+    Surface (ddefs, trmdefs) ->
+      keys ddefs ++  -- type names 
+      (elems ddefs >>= consNames) ++  -- constructor names
+      (show <$> keys trmdefs)  -- var names
+
+    Cast (ddefs, trmdefs) ->
+      keys ddefs ++  -- type names
+      (elems ddefs >>= C.consNames) ++  -- constructor names
+      (show <$> keys trmdefs)  -- var names
+
+    NothingLoaded -> []
 
 
 -- type for a single evaluation in the REPL
