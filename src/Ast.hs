@@ -104,6 +104,7 @@ instance Subst Exp DataDef
 type Telescope = Tel Exp Ty
 
 
+erasePos :: Exp -> Exp
 erasePos (Pos _ e _) = erasePos e
 erasePos (e ::: t) = erasePos e ::: erasePos t
 erasePos (Fun (unsafeUnbind -> ((s,a),bod))) = Fun (bind (s,a) $ erasePos bod)
@@ -133,6 +134,7 @@ instance Show Exp where
 -- the code view
 --TODO: haskell show typeclass
 -- also still bad about vars
+codeshow :: Exp -> [Char]
 codeshow e =
     case simpleNat e of
       Just n -> "(n " ++ show n ++ ")"
@@ -185,6 +187,7 @@ codeshowMatch (Match n bnde) = runFreshM $ do -- TODO this is buggy
 
 -- a hacky show for presentation perposes
 -- Ideally should match direct haskell
+simpleNat :: Num a => Term -> Maybe a
 simpleNat (DCon "Z") =  Just 0
 simpleNat (DCon "S" `App` e) = (1 +) <$> simpleNat e
 simpleNat _ = Nothing
